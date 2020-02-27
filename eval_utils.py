@@ -299,7 +299,7 @@ def merge_collected_matches( word_matches_1, word_matches_2, focus_fields = ['le
 
 
 def write_out_freq_sorted_annotations( outfname, items, fields = ['lemma','ending','clitic','partofspeech','form'], \
-                                       freq_threshold=-1, add_probabilities=True, encoding='utf-8' ):
+                                       freq_threshold=-1, add_probabilities=True, remove_ties=False, encoding='utf-8' ):
     '''Writes the freq sorted ambiguous analyses (items) into a tab-separated CSV file (outfname).'''
     output_csv = open(outfname, 'w', encoding=encoding, newline='')
     dialect='excel-tab'
@@ -316,8 +316,15 @@ def write_out_freq_sorted_annotations( outfname, items, fields = ['lemma','endin
         for annotation in sorted(items[keyword], key=items[keyword].get, reverse=True):
             total_freq += items[keyword][annotation]
             weights.append( items[keyword][annotation] )
+        # Check if the frequency threshold is met
         if freq_threshold > -1 and freq_threshold>total_freq:
             continue
+        if remove_ties:
+            # Check for tie situations: do not add word in case of a tie
+            ann_counts = [items[keyword][k] for k in items[keyword].keys()]
+            if len(ann_counts) > 1 and len(set(ann_counts)) == 1:
+                # A tie (all annotation counts were equal): skip the word
+                continue
         # If required, calculate weights/probability estimations
         if add_probabilities and total_freq > 0:
             weights = [ round(w/total_freq, 4) for w in weights ]
