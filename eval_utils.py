@@ -107,7 +107,7 @@ def reduce_vm_annotations( vm_annotations, fields=['lemma','ending','clitic','pa
 def collect_matches( loaded_texts, gold_morph_layer, \
                      gold_morph_type=GoldStandard.UD_CORPUS, \
                      focus_fields = ['lemma','ending','clitic','partofspeech','form'],
-                     show_diff = False ):
+                     show_diff = False, show_warnings = False ):
     '''Collects word-to-correct-analyses statistics about ambiguous words.
        For each ambiguous word, makes a frequency list of its analyses based 
        on the manually corrected morph analysis in the gold_morph_layer.
@@ -118,6 +118,7 @@ def collect_matches( loaded_texts, gold_morph_layer, \
     matches_found = 0
     words_total   = 0
     word_matches = {}
+    seen_indistinguishable = set()
     for text in loaded_texts:
         words_total += len(text.morph_analysis)
         for wid, morph_word in enumerate(text.morph_analysis):
@@ -134,6 +135,29 @@ def collect_matches( loaded_texts, gold_morph_layer, \
                     vm_mismatching_reduced = reduce_vm_annotations( mismatching, fields=focus_fields, output_format='tuple' )
                     is_propername = any([ar[2] for ar in vm_matching_reduced if ar[2] == 'H'])
                     word = morph_word.text.lower() if not is_propername else morph_word.text
+                    #
+                    # Note: after reducing annotations, some of them may become indistinguishable.
+                    # Mostly these are proper names with different root tokenizations, such as:
+                    #    ('Ekspress', '0', '', 'H', 'sg g')
+                    #    ('Ekspress', '0', '', 'H', 'sg g')
+                    # or
+                    #    ('Hansapank', '0', '', 'H', 'sg n')
+                    #    ('Hansapank', '0', '', 'H', 'sg n')
+                    # Currently: Count these cases, and add an user warning about them.
+                    # In future: find a fix, e.g. replace 'lemma' with 'root' in focus_fields.
+                    #
+                    if len(vm_matching_reduced) != len(set(vm_matching_reduced)) and \
+                       word not in seen_indistinguishable:
+                        anns_str_list = [ '  '+str(a) for a in vm_matching_reduced ]
+                        if show_warnings:
+                            print('(!) Warn: indistinguishable annotations: \n{}'.format( '\n'.join( anns_str_list )))
+                        seen_indistinguishable.add( word )
+                    elif len(vm_mismatching_reduced) != len(set(vm_mismatching_reduced)) and \
+                         word not in seen_indistinguishable:
+                        anns_str_list = [ '  '+str(a) for a in vm_mismatching_reduced ]
+                        if show_warnings:
+                            print('(!) Warn: indistinguishable annotations: \n{}'.format( '\n'.join( anns_str_list )))
+                        seen_indistinguishable.add( word )
                     if word not in word_matches:
                         word_matches[word] = defaultdict(int)
                     for ann_reduced in vm_matching_reduced:
@@ -151,6 +175,9 @@ def collect_matches( loaded_texts, gold_morph_layer, \
     print(' Ambiguous words from total words:                   ',ambiguous, '/', words_total, percent)
     percent = '({:.2f}%)'.format((matches_found/ambiguous)*100.0)
     print(' Ambiguous words successfully matched to gold morph: ', matches_found, '/', ambiguous, percent)
+    if len(seen_indistinguishable) > 0:
+        percent = '({:.2f}%)'.format((len(seen_indistinguishable)/ambiguous)*100.0)
+        print(' Ambiguous words with indistinguishable annotations: ', len(seen_indistinguishable), '/', ambiguous, percent)
     return word_matches
 
 
